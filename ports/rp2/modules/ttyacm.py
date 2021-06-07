@@ -25,7 +25,7 @@
 
 PRODUCT = "Virtual Serial Port Interface"
 PACKAGE = "ttyacm"
-PROGRAM = "ttyacm.py
+PROGRAM = "ttyacm.py"
 VERSION = "0.01"
 CHANGES = "0000"
 TOUCHED = "0000-00-00 00:00:00"
