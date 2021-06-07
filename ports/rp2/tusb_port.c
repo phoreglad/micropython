@@ -25,13 +25,24 @@
  */
 
 #include "tusb.h"
-#include "pico/unique_id.h"
 
 #define USBD_VID (0x2E8A) // Raspberry Pi
-#define USBD_PID (0x0005) // RP2 MicroPython
+// Change for two channels ...
+#define USBD_PID (0x0005) // MicroPython Triple Serial Interface
 
-#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN)
+#define USBD_DESC_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN * CFG_TUD_CDC)
 #define USBD_MAX_POWER_MA (250)
+
+enum
+{
+  ITF_NUM_CDC_0 = 0,
+  ITF_NUM_CDC_0_DATA,
+  ITF_NUM_CDC_1,
+  ITF_NUM_CDC_1_DATA,
+  //ITF_NUM_CDC_2,        // Remove for two channels
+  //ITF_NUM_CDC_2_DATA,   // Remove for two channels
+  ITF_NUM_TOTAL
+};
 
 #define USBD_ITF_CDC (0) // needs 2 interfaces
 #define USBD_ITF_MAX (2)
@@ -47,6 +58,15 @@
 #define USBD_STR_PRODUCT (0x02)
 #define USBD_STR_SERIAL (0x03)
 #define USBD_STR_CDC (0x04)
+
+#define EPNUM_CDC_0_NOTIF (0x81)
+#define EPNUM_CDC_0_DATA (0x02)
+
+#define EPNUM_CDC_1_NOTIF (0x84)
+#define EPNUM_CDC_1_DATA (0x05)
+
+//#define EPNUM_CDC_2_NOTIF (0x87)   // Remove for two channels
+//#define EPNUM_CDC_2_DATA (0x08)    // Remove for two channels
 
 // Note: descriptors returned from callbacks must exist long enough for transfer to complete
 
@@ -68,17 +88,24 @@ static const tusb_desc_device_t usbd_desc_device = {
 };
 
 static const uint8_t usbd_desc_cfg[USBD_DESC_LEN] = {
-    TUD_CONFIG_DESCRIPTOR(1, USBD_ITF_MAX, USBD_STR_0, USBD_DESC_LEN,
-        0, USBD_MAX_POWER_MA),
+    TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, USBD_STR_0, USBD_DESC_LEN,
+        TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, USBD_MAX_POWER_MA),
 
-    TUD_CDC_DESCRIPTOR(USBD_ITF_CDC, USBD_STR_CDC, USBD_CDC_EP_CMD,
-        USBD_CDC_CMD_MAX_SIZE, USBD_CDC_EP_OUT, USBD_CDC_EP_IN, USBD_CDC_IN_OUT_MAX_SIZE),
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, USBD_STR_CDC, EPNUM_CDC_0_NOTIF,
+        USBD_CDC_CMD_MAX_SIZE, EPNUM_CDC_0_DATA, 0x80 | EPNUM_CDC_0_DATA, USBD_CDC_IN_OUT_MAX_SIZE),
+
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, USBD_STR_CDC, EPNUM_CDC_1_NOTIF,
+        USBD_CDC_CMD_MAX_SIZE, EPNUM_CDC_1_DATA, 0x80 | EPNUM_CDC_1_DATA, USBD_CDC_IN_OUT_MAX_SIZE),
+
+    // Remove for two channels ...
+    //TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_2, USBD_STR_CDC, EPNUM_CDC_2_NOTIF,
+    //    USBD_CDC_CMD_MAX_SIZE, EPNUM_CDC_2_DATA, 0x80 | EPNUM_CDC_2_DATA, USBD_CDC_IN_OUT_MAX_SIZE),
 };
 
 static const char *const usbd_desc_str[] = {
-    [USBD_STR_MANUF] = "MicroPython",
-    [USBD_STR_PRODUCT] = "Board in FS mode",
-    [USBD_STR_SERIAL] = NULL, // generated dynamically
+    [USBD_STR_MANUF] = "MicroPython Double",   // Rename for two channels
+    [USBD_STR_PRODUCT] = "Double Serial",      // Rename for two channels
+    [USBD_STR_SERIAL] = "00000000", // TODO
     [USBD_STR_CDC] = "Board CDC",
 };
 
@@ -103,21 +130,9 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
         if (index >= sizeof(usbd_desc_str) / sizeof(usbd_desc_str[0])) {
             return NULL;
         }
-        // check, if serial is requested
-        if (index == USBD_STR_SERIAL) {
-            pico_unique_board_id_t id;
-            pico_get_unique_board_id(&id);
-            // byte by byte conversion
-            for (len = 0; len < 16; len += 2) {
-                const char *hexdig = "0123456789abcdef";
-                desc_str[1 + len] = hexdig[id.id[len >> 1] >> 4];
-                desc_str[1 + len + 1] = hexdig[id.id[len >> 1] & 0x0f];
-            }
-        } else {
-            const char *str = usbd_desc_str[index];
-            for (len = 0; len < DESC_STR_MAX - 1 && str[len]; ++len) {
-                desc_str[1 + len] = str[len];
-            }
+        const char *str = usbd_desc_str[index];
+        for (len = 0; len < DESC_STR_MAX - 1 && str[len]; ++len) {
+            desc_str[1 + len] = str[len];
         }
     }
 
